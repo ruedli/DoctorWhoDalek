@@ -1,0 +1,7 @@
+
+Enter LOWRES display mode on highres Dalek
+
+0 Normal display
+1 Left display
+2 Centered display
+3 Right display

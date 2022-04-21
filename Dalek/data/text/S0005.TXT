@@ -1,0 +1,2 @@
+
+Minimum time that animation lasts after signal is away (0=continuous)? 

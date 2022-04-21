@@ -1,0 +1,6 @@
+
+Determine how the lights work:
+
+o On         O On Strobing
+b Blink      B Blink Strobing
+f Flash      F Flash Strobing 

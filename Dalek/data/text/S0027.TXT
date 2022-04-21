@@ -1,0 +1,10 @@
+
+Determine the colors:
+
+[0..7] a color
+A      Random (Any) color
+G      Random (as a Group)
+U      Random (Unique color)
+L      Follow Left eye
+R      Follow Right eye
+N      Follow Nose

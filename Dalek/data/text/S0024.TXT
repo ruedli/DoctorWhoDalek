@@ -1,0 +1,1 @@
+Maximum time that animation lasts after signal is away? 

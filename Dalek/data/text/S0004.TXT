@@ -1,0 +1,16 @@
+
+
+Possible commands:
+
+L for entering commands for the LEDS
+H for entering commands for the HEAD
+R for entering commands for the RING 
+N for stopping to enter manual commmans: Nothing
+
+P Put file on the SD card
+G Get file from the SD card
+T toggle listing of played out files
+
+A Set animation interval
+
+Enter a command: 

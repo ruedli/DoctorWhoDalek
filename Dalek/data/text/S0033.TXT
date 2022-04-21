@@ -1,0 +1,2 @@
+
+Enter Low res mode  color bytes (terminate by Z)
