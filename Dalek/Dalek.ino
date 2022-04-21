@@ -2,10 +2,6 @@
 #define ESP8286
 //#define Arduino
 
-//Set features
-//#define RotEncoder 
-//#define AnalogButton 
-
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 
@@ -42,10 +38,6 @@
 #endif
 
 #include <Servo.h>
-
-#ifdef RotEncoder
-#include <RotEncoder.h>			// A library for reading rotational decoders and their buttons
-#endif
 
 #ifdef __TM1640
 #include <TM1638.h> // required because the way arduino deals with libraries
@@ -288,39 +280,6 @@ boolean ShowFilenames=false;	  // This shows the filenames on serial log. use co
 #define __MoveByPinball_stop_center 6	// Who (listening to the Solenoid25 signal, stop immedieately when solenois signal disappears, center slowly
 
 #define __DelayTimeForCentering 60000
-
-
-#define __PhaseReadSwitches 0  		// This is the first loop, Read switches and de-bounce them
-#define __PhaseReadI2C 1  			// read the command from I2C master.
-#define __PhaseReadRotary 2  		// Read the command from rotary switch
-#define __PhaseExecute 3		  	// Interpret and execute the command / switches read in the first phases
-#define __PhaseRandomUpdate 4	  	// In this phase the random movement is updated if needed.
-#define __PhaseUpdateDisplay 5		// In this phase the DISPLAY is updated if needed.
-#define __PhaseUpdateSerial 6		// In this phase the output to the serial channel is written.
-
-#ifdef AnalogButton
-#define _AButton_Nothing  0
-#define _AButton_Enter 	5
-#define _AButton_Left 	1
-#define _AButton_Right 	2	 
-#define _AButton_Up 	3
-#define _AButton_Down 	4
-#endif 
-
-#ifdef Rotencoder
-#define __MenuNone 0  
-#define __MenuSpeed 1  
-#define __MenuMovement 2  
-#define __MenuLeft 3  
-#define __MenuCenter 4  
-#define __MenuRight 5  
-#define __MenuInvertServo 6  
-#define __MenuServoRate 7 
-#define __MenuStoreEEPROM 8  
-#define __MenuRecallEEPROM 9  
-  
-#define __MenuMax 9
-#endif
 
 //#define DEBUG
 #ifdef DEBUG
@@ -656,6 +615,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 	    - 375: 25 columns with 5 RGB LEDS
 		-  72: A ring with 24 RGB LEDS
 		-  45: Nose, left eye, right eye 5 RGB LEDS each
+	   Add MQTT interface
+	   Store settings in EEPROM
+	   Store patterns on flashdrive of the D1 mini.
+	   Add OTA updates
+	   Add screen to configure wifi settings.
+	   
+ - 4.1 Remove the old code for LCD and menu
  */
 
 
@@ -802,21 +768,6 @@ const long _RandomInterval = 10000;
 
 #endif
 
-// Rotational encoder
-#ifdef RotEncoder 
-#define _RotEncoder_A 8
-#define _RotEncoder_B 7
-#define _RotButton    9
-#endif
-
-#if AnalogButton							   
-//Optional, in case you attach 5 keys wired with resistors on an analog pin.
-#define _AnalogButtonPin  0
-#endif
-
-//Optional, in case you attach a rotational encoder
-// Pins
-
 // These were all the INPUT pins.............................................................
 
 // OUTPUT ===================================================================================
@@ -837,21 +788,6 @@ const long _RandomInterval = 10000;
 // These were all the OUTPUT pins............................................................
 
 const byte esc = 27;
-const byte _PhasesMax = 7;
-
-#ifdef RotEncoder
-byte _ButtonWasPressed = 0;
-
-
-word LEDS = 0;
-word OldLEDS = -1;
-#endif
-
-byte _SpecialDisplay=2;  /* Determines which type of display to show
- 1: Shape
- 2: Version
- 3: RPM
- */
 
 byte _MovementMode;     /* Type of movement of the Dalek (in EEPROM)
  0: __MoveByPinball 		Who listening to the Solenoid25 signal, speed control (This is the DEFAULT, startup mode)
@@ -863,20 +799,6 @@ byte _MovementMode;     /* Type of movement of the Dalek (in EEPROM)
  6: __MoveByPinball_stop_center
  */
 
-#ifdef RotEncoder
-boolean MenuActive = false;
-byte _MenuItem = __MenuNone; 		/* for knowing where in the menu we are
-#define __MenuNone 0  
-#define __MenuSpeed 1  
-#define __MenuMovement 2  
-#define __MenuLeft 3  
-#define __MenuCenter 4  
-#define __MenuRight 5  
-#define __MenuStoreEEPROM 6  
-#define __MenuRecallEEPROM 7  
-*/
-#endif
-
 double _Step;            // Each interval add _Step to x, for high RMP (moving fast) Step is larger.
 
 //float _y=0;             // Calculated (before calibration) servo position  ([-1, 1])
@@ -884,17 +806,10 @@ double _Step;            // Each interval add _Step to x, for high RMP (moving f
 // Loop for metro
 const byte _EncoderLoopMillis = 5;
 Metro _ServoLoop = Metro(10);								//Loop for setting the servo
-Metro _ProcessingLoop = Metro(1);
+Metro _ProcessingLoop = Metro(500);
 
 // A servo......
 Servo _Servo;
-
-#ifdef RotEncoder
-// Rotational encoder parameters and settings
-// Pins
-RotEncoder MyEncoder(_RotEncoder_A,_RotEncoder_B);		// Pin 7 and 8, divide by 4, 10ms debouncing: max 100/4 = 25 notches/second
-EncoderButton MyButton(_RotButton);		// Pin 9, 10ms debouncing
-#endif
 
 long _DalekStatus;
 
@@ -943,108 +858,9 @@ boolean OldWeAreGoingRight = false;
 const float _XMarge = 0.025; // Is used to determine whether we REALLY passed the center. When X passes within this margin, the _WeAreCENTERED boolean is TRUE
 // Outside this margin EITHER _WeAreRight or _WeAreLeft = true.
 
-#ifdef RotEncoder
-unsigned long _TimeNormalDisplay; // Here we detect whether it is time to show the normal display again...
-unsigned long _TimeExitMenu;		 // Auto quit the menu after inactivity of 10 seconds
-boolean _UpdatLCDoneTime = false;	 // Just to make sure we only trigger the LCD update ONCE after menu timeout
-#endif
-
-byte _StageCommand;
-
-// set the LCD address to 0x27 for a this I2C board. Also boards with other adresses exist: 0x20 e.g.
-// Set the pins on the I2C chip used for LCD connections:
-//LiquidCrystal_I2C lcd(0x20, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
-
-//Note that the I2C library always uses the SDA and SCL lines of the processor. They MUST be connected to Analog4 and 5 as follws:
-//SDA - ANALOG Pin 4
-//SCL - ANALOG pin 5
-//                    addr, en,rw,rs,d4,d5,d6,d7,bl,blpol
-
-#ifdef RotEncoder
-LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
-boolean UpdateLCD = true;
-#endif
-
 const float Pi = 3.14159265358979323846264338;
 const float Pi5 = Pi/2;
 const float Pi2 = 2*Pi;
-
-#ifdef RotEncoder
-uint8_t custom_25[8] = {0x12,0x19,0x15,0x12,0x00,0x17,0x15,0x1D};  		//a character "25"
-uint8_t custom_right[8] = {0x18,0x04,0x06,0x1F,0x1F,0x06,0x04,0x18};  	//an arrow "right"
-uint8_t custom_left[8] = {0x03,0x04,0x0C,0x1F,0x1F,0x0C,0x06,0x03};  	//an arrow "left"
-//uint8_t custom_square1[8] = {0x00,0x1F,0x11,0x15,0x15,0x11,0x1F,0x00};  //a character "square1"
-//uint8_t custom_square2[8] = {0x00,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F,0x00};  //a character "square2" (a filed square 1)
-uint8_t custom_dash[8] = {0x00,0x00,0x00,0x1F,0x1F,0x00,0x00,0x00};  //a character "square1"
-uint8_t custom_dashF[8] = {0x00,0x00,0x1F,0x1F,0x1F,0x1F,0x00,0x00};  //a character "square2" (a filed square 1)
-
-uint8_t custom_barr[8] = {0x10,0x10,0x18,0x18,0x18,0x18,0x10,0x10};  	//a character "bar right"
-uint8_t custom_barl[8] = {0x01,0x01,0x03,0x03,0x03,0x03,0x01,0x01};  	//a character "bar left"
-uint8_t custom_dot[8] = {0x00,0x00,0x0E,0x1F,0x1F,0x1F,0x0E,0x00};  //a character "o", but then filled
-
-#define _custom_25 		0
-#define _custom_right 	1
-#define _custom_left 	2
-//#define _custom_square1 3
-//#define _custom_square2 4
-#define _custom_dash 3
-#define _custom_dashF 4
-#define _custom_barr 	5
-#define _custom_barl 	6
-#define _custom_dot 	7
-
-#endif
-
-#ifdef AnalogButton
-//Declare function with optional parameters
-byte MyAnalogKeys(boolean SetDefault = false)
-{
-	static int TestedOK=true; //Used for ignoring the value when no keyboard is attached...
-	
-	uint16_t value = analogRead(_AnalogButtonPin);  // analogpin for keypad
-
-	#define _BUTTON_analog_enter_min     650     // Button Enter (720)
-	#define _BUTTON_analog_enter_max     850  
-
-	#define _BUTTON_analog_up_min        50     // Button Up (135)
-	#define _BUTTON_analog_up_max        250   
-
-	#define _BUTTON_analog_down_min      250     // Button Down (305)
-	#define _BUTTON_analog_down_max      450   
-
-	#define _BUTTON_analog_left_min      450     // Button Left (475)
-	#define _BUTTON_analog_left_max      650   
-
-	#define _BUTTON_analog_right_min     0     // Button Right (0)
-	#define _BUTTON_analog_right_max     50   
-
-	if (SetDefault) {if (value < _BUTTON_analog_enter_max) {TestedOK=false;}}
-	//Serial.print(TestedOK);Serial.print(" Value: "); Serial.println(value);  
-	
-	if (!TestedOK) {
-		return _AButton_Nothing; //Allows suppressing detected keys, when no keyboard is attached....
-	} else if(value >= _BUTTON_analog_enter_min && value <= _BUTTON_analog_enter_max) {        // control enter
-		return _AButton_Enter;
-	} else if(value >= _BUTTON_analog_up_min && value <= _BUTTON_analog_up_max) {      // control up
-		return _AButton_Up;
-	} else if(value >= _BUTTON_analog_down_min && value <= _BUTTON_analog_down_max) {   // control down
-		return _AButton_Down;
-	} else if(value >= _BUTTON_analog_left_min && value <= _BUTTON_analog_left_max)  {   // control left
-		return _AButton_Left;
-	} else if(value >= _BUTTON_analog_right_min && value <= _BUTTON_analog_right_max) { // control right
-		return _AButton_Right;
-	} else {
-		return _AButton_Nothing;
-	}
-	
-	return _AButton_Nothing;
-}
-
-
-
-
-
-#endif
 
 // Oneliner functions...
 
@@ -1086,7 +902,6 @@ void EEPROMputIP(int strEEPROM, IPAddress ipsave, byte size) {
 
 void ReadSettings() {
 
-	_MovementMode = __MoveByPinball;
 #ifdef Arduino
 	if ((EEPROM.read(100) == __RR_PROJECT) && (EEPROM.read(101) == __RR_VERSION)) {
 
@@ -1099,6 +914,7 @@ void ReadSettings() {
 		_Center  = constrain(EEPROM.read(7) * 256 + EEPROM.read(6),1000,2000);
 		_Right  = constrain(EEPROM.read(9) * 256 + EEPROM.read(8),1501,2500);
 		_InvertedServo = EEPROM.read(10);
+		_MovementMode = __MoveByPinball_stop_center;	//Not stored in this version		
 	} else {
 		
 		_RPM = 30;
@@ -1108,6 +924,7 @@ void ReadSettings() {
 		_Left = 1000;  // min =544, typical remote control: 1000;
 		_Right = 2000; // max =2400, typical remote control: 2000;
 		_Center = 1500;
+		_MovementMode = __MoveByPinball_stop_center;
 		WriteSettings();
 	}
 	
@@ -1866,8 +1683,6 @@ void setup()
 	DisplayDrivers[2].InitDriver();
 	HeadDriver.InitDriver();
 	
-	//randomSeed(analogRead(0));
-
 	// initialize serial:
 	Serial.begin(115200);
 	while (!Serial) {}
@@ -2012,34 +1827,8 @@ void setup()
 
 	// Read settings from EEPROM (or initialize them if setting are not correct)
 	ReadSettings();
-	
-	#ifdef AnalogButton	
-	//Calibrate analog keys
-	//Serial.println("Before calibration "),Serial.println(MyAnalogKeys());
-	//Calibrate whether ot not a keyboard is attached, NO keys should be pressed....
-	MyAnalogKeys(true);
-	//Serial.println("After calibration "),Serial.println(MyAnalogKeys());
-	#endif
 
-	#ifdef RotEncoder
-	lcd.begin(16,2);   	// initialize the lcd for 16 chars 2 lines, turn on backlight
-	//lcd.begin(20,4);  // initialize the lcd for 16 chars 2 lines, turn on backlight
-
-	// Define custom characters for the LCD:
-	lcd.createChar(_custom_25, custom_25);
-	lcd.createChar(_custom_right, custom_right);
-	lcd.createChar(_custom_left, custom_left);
-//	lcd.createChar(_custom_square1, custom_square1);
-//	lcd.createChar(_custom_square2, custom_square2);
-	lcd.createChar(_custom_dash, custom_dash);
-	lcd.createChar(_custom_dashF, custom_dashF);
-	lcd.createChar(_custom_barr, custom_barr);
-	lcd.createChar(_custom_barl, custom_barl);
-	lcd.createChar(_custom_dot, custom_dot);
-	#endif
-
-	//_MovementMode = __MoveByPinball; // Set it to listening to the pinball machine...
-	
+	_MovementMode = __MoveByPinball; // Set it to listening to the pinball machine...
 	setupAfterSettingsChange();
 	
 	// Initialize the output pin for the centered servo:
@@ -2055,21 +1844,6 @@ void setup()
 											 
 	digitalWrite(_SDAPin, LOW);	// Switch test LED off
 	digitalWrite(_SCLPin, LOW); // Switch test LED off
-	
-	#ifdef AnalogButton
-	//The analog button pin needs a pullup resistor as well...
-	digitalWrite(_AnalogButtonPin, HIGH); // This enables the internal pullup resistor
-	#endif
-	
-	#ifdef RotEncoder
-	lcd.clear();
-	lcd.print("Dalek");
-	lcd.setCursor(6,0);
-	lcd.print(__RR_SW_Version);
-	lcd.setCursor(0,1);
-	lcd.print("Ruud Rademaker");
-	_TimeNormalDisplay = millis(); //Display the information text for 2 seconds.
-	#endif
 }
 
 void OpenFirstSleepingSDFile(byte LEDorHEADorRING) {
@@ -2163,27 +1937,6 @@ void loop()
 	static unsigned long _TimeRandomShape;   // Here we detect whether it is time to select a new movement mode...
 	static unsigned long _TimeLastMovement;	 // Detecting whether it is time to move to the center pos
 	static boolean _NeedToCenter = false;	 // Ensures that after a minut we fully return to the center.				
-	
-
-	#ifdef RotEncoder
-	static long NewDalekStatus=0;	// Used for comparing to previous status, to see whether the LCD need updating.
-	static long EncValue = 0;	
-	
-	byte TempButton; 	// used for de-bouncing analog keyboard
-	MyEncoder.ReadEnc(EncValue); 	// This routine has its own timer loop and allows 
-									//	other functions to see whether there was a rotation.
-	#endif
-	
-	#ifdef AnalogButton
-	byte Abuttons;	/*The analog buttons, values:
-					_AButton_Nothing  0
-					_AButton_Enter 	5
-					_AButton_Left 	1
-					_AButton_Right 	2	 
-					_AButton_Up 	3
-					_AButton_Down 	4 
-*/
-	#endif
 	
 	unsigned long Now = millis();
 	
@@ -2378,486 +2131,17 @@ void loop()
 	
 	if (_ProcessingLoop.check() == 1) {
 		DEBUG_OUT("Processing loop entered","")
-		//0: Readkeys, 1: interpret keys: etc. see below
-		switch (++ProcessingPhase %=_PhasesMax) {          // ProcessingPhase will take values between 0 and 5...
-		#ifdef RotEncoder
-		case __PhaseReadSwitches:
-			//read switches and de-bounce them
-			// Reading analog keyboard here, you could also read digital key, but then you need an input for each key...
-			TempButton = MyAnalogKeys();
-			if (TempButton == LastKeyPressed) { //Pressed it long enough to ignore bouncing....
-				Abuttons = TempButton;
-			} else {
-				LastKeyPressed =  TempButton; 
+		// Is it indeed already time to change the "shape of movement" AND are we supposed to change it???
+		if (_Shape ==__ShapeRandom) {
+			if ((millis() - _TimeRandomShape) >= _RandomInterval) {  //if so, change it and wait for the next moment to change it.
+			_TimeRandomShape = millis();
+			_ShapeRandom = random(0,__ShapeRandom);
 			}
-
-			switch (Abuttons) {
-			case _AButton_Left:
-			case _AButton_Down:
-				/* _StageCommand = '-'; */
-				break;
-			case _AButton_Up:
-			case _AButton_Right:
-				_StageCommand = '+';
-				break;
-			case _AButton_Enter:
-				_StageCommand = 'E';
-			break;
-			case _AButton_Nothing:	  
-				_Command = _StageCommand; //Now the button has been released, issue it and clear it from staging.
-				_StageCommand = '0';
-			}
-			break;	// case __PhaseReadSwitches: read switches and debounce them is READY now
-		case __PhaseReadRotary:
-			// First the rotation, this is done in a routine that leaves its value in EncValue...
-			if (EncValue >0) {
-				_Command='+';
-				EncValue--;		
-			} else if (EncValue <0){
-				_Command='-';
-				EncValue++;
-			}
-
-			// Now the button
-			if (MyButton.ReadButton()==EncoderButton::Clicked) {
-				_Command='E';
-			}
-
-			/*
-			EncValue = encoder->getValue();
-			switch (EncValue) {
-			case 0: // Nothing read, try the button...
-				EncButton = encoder->getButton();
-				switch (EncButton) {
-				case ClickEncoder::Open:
-					break;
-				case ClickEncoder::Clicked:
-					_Command = 'E';
-					break;
-				case ClickEncoder::DoubleClicked:
-					_Command = 'Q';
-					//encoder->setAccelerationEnabled(!encoder->getAccelerationEnabled());
-					break;
-				case ClickEncoder::Pressed:
-					break;
-				case ClickEncoder::Held:
-					break;
-				case ClickEncoder::Released:
-					break;
-				}
-				break;
-			case 1:
-				_Command = '-';
-				break;	
-			case -1:
-				_Command = '+';
-				break;
-			}
-*/
-			break;
-		case __PhaseExecute: //interpret and EXECUTE commands / switches
-			// Are we IN an active menu?
-			if (_Command == '0') {
-				// No command issued, do nothing, just verify whether an update of the display is needed.
-			} else if (MenuActive) {
-				_TimeExitMenu = millis(); // Make sure we only exit the menu aft 10 seconds
-				UpdateLCD=true;
-				switch (_Command) {
-				case '-':
-					switch (_MenuItem) {
-					case __MenuSpeed:	
-						_RPM = max(1,_RPM-1);
-						break;
-					case __MenuMovement:
-						if (_Shape == 0) {
-							_Shape = __ShapeRandom;
-						} else {
-							_Shape--;
-						}
-						break;
-					case __MenuLeft:
-						_Left -= 5;
-						ServoReAttach();
-						break;
-					case __MenuCenter:  
-						_Center -= 5; 
-						break;
-					case __MenuRight:  
-						_Right -= 5; 
-						ServoReAttach();
-						break;
-					case __MenuServoRate:  
-						_Interval = max(3,_Interval-1); 
-						_ServoLoop.interval(_Interval);
-						_ServoLoop.reset();
-						break;
-					case __MenuInvertServo:  
-						_InvertedServo = !_InvertedServo; 
-						break;
-
-					}
-					break;
-				case '+':
-					switch (_MenuItem) {
-					case __MenuSpeed:	
-						_RPM = min(90,_RPM+1);
-						break;
-					case __MenuMovement:
-						if (_Shape == __ShapeRandom) {
-							_Shape = 0;
-						} else {
-							_Shape++;
-						}
-						break;
-					case __MenuLeft:
-						_Left += 5;
-						break;
-					case __MenuCenter:  
-						_Center += 5; 
-						ServoReAttach();
-						break;
-					case __MenuRight:  
-						_Right += 5; 
-						ServoReAttach();
-						break;
-					case __MenuServoRate:  
-						_Interval += 1; 
-						_ServoLoop.interval(_Interval);
-						_ServoLoop.reset();
-						break;
-					case __MenuInvertServo:  
-						_InvertedServo = !_InvertedServo; 
-						break;
-					}
-					break;
-				case 'Q': // Quit menu
-				case 'E':
-					_MovementMode = __MoveByPinball;
-					MenuActive=false;
-					break;
-				}
-			} else {				// Command was different from 0, and the menu was not active...
-				OldRPM = -1; //This will force a repaint of thescreen ones we come back to the main menu.
-				_TimeExitMenu = millis(); // Make sure we only exit the menu aft 10 seconds
-				UpdateLCD=true;
-				switch (_Command) {
-				case '-':
-					if (_MenuItem==__MenuNone) {
-						_MenuItem=__MenuMax;
-					} else {
-						_MenuItem--;
-					}
-					break;
-				case '+':
-					if (_MenuItem==__MenuMax) {
-						_MenuItem=__MenuNone;
-					} else {
-						_MenuItem++;
-					}
-					break;
-				case 'Q': // Quit menu
-				case 'E':
-					switch (_MenuItem) {
-					case __MenuSpeed:	
-					case __MenuMovement:
-					case __MenuInvertServo:
-					case __MenuServoRate:
-						_MovementMode = __MoveAutonomous;
-						MenuActive=true;
-						break;
-					case __MenuLeft:
-						_MovementMode = __MoveFixedLeft;
-						MenuActive=true;
-						break;
-					case __MenuCenter:  
-						_MovementMode = __MoveFixedCenter;
-						MenuActive=true;
-						break;
-					case __MenuRight:  
-						_MovementMode = __MoveFixedRight;
-						MenuActive=true;
-						break;
-					case __MenuStoreEEPROM:
-						lcd.setCursor(0,1);
-						lcd.print("Write settings");
-						_TimeNormalDisplay = millis(); //Display the information text for 1 second.
-						WriteSettings();
-						break;
-					case __MenuRecallEEPROM:
-						_TimeNormalDisplay = millis(); //Display the information text for 1 second.
-						lcd.setCursor(0,1);
-						lcd.print("Read settings");
-						ReadSettings();
-						break;
-					}
-				}
-			
-			}
-			break;
-		#endif
-		case __PhaseRandomUpdate:
-			// Is indeed already time to change the "shape of movement" AND are we supposed to change it???
-			if (_Shape ==__ShapeRandom) {
-				if ((millis() - _TimeRandomShape) >= _RandomInterval) {  //if so, change it and wait for the next moment to change it.
-				_TimeRandomShape = millis();
-				_ShapeRandom = random(0,__ShapeRandom);
-				}
-			} else {
-				_ShapeRandom = _Shape;
-			}
-
-			//update speed calc string
-			_Step = CalcSweepStep(_Interval, _RPM);
-			
-			#ifdef RotEncoder
-			//See if it is time to exit the menu
-			if (millis() - _TimeExitMenu < 1000) {
-				_UpdatLCDoneTime = true;
-			}
-			if (millis() - _TimeExitMenu) < 10000 {
-				if (_UpdatLCDoneTime) {
-					_UpdatLCDoneTime = false;
-					UpdateLCD = true;
-					_TimeNormalDisplay = millis(); 		// Force the normal lcd update
-					_MenuItem=__MenuNone;				// The default menu again
-					MenuActive=false;					// Force exiting the submenu if we were in there
-					_MovementMode = __MoveByPinball;	// Stop any automatic movement.			
-				}
-			}
-			
-			//Because there is so little to do, I also compute the DalekStatus here in this cycle.
-			if (_WeAreGoingRight) {
-				NewDalekStatus = 1;
-			} else {
-				NewDalekStatus = 0;
-			}
-		
-			NewDalekStatus <<=1;
-			if (_WeAreRight) {
-				NewDalekStatus +=1;
-			}
-
-			NewDalekStatus <<=1;
-			if (_WeAreCENTERED) {
-				NewDalekStatus +=1;
-			}
-
-			NewDalekStatus <<=1;
-			if (_WeAreLeft) {
-				NewDalekStatus +=1;
-			}
-
-			NewDalekStatus <<=1;				// Whether or not the solenoid is activated
-			if (Solenoid25) {
-				NewDalekStatus +=1;
-			}
-
-			NewDalekStatus <<=1;
-			if (_Shape == __ShapeRandom) {		// Whether or not we are in random mode 
-				NewDalekStatus +=1;
-			}
-
-			NewDalekStatus <<=2;
-			NewDalekStatus += _ShapeRandom;		// The actual movement mode, whether random or fixed (2 bit: 0-3);
-			
-			NewDalekStatus <<=7;
-			NewDalekStatus += _RPM;		// The actual RPM (7 bit: 0-99);
-
-			LEDS = round(6.0 * saw(x) + 6.0);			
-			NewDalekStatus <<=5;
-			NewDalekStatus += LEDS;		// The actual position (5 bit: 0-12);
-
-			if (NewDalekStatus != _DalekStatus) {
-				_DalekStatus = NewDalekStatus;
-				UpdateLCD = true;
-			}
-			#endif
-
-			break; //update speed calc string DONE
-		
-		#ifdef RotEncoder
-		case __PhaseUpdateDisplay:
-			if ((millis() - _TimeNormalDisplay) < 1000) {
-					  
-			} else {
-
-				//Update Display
-
-				if (UpdateLCD) {
-					//Update Display will be done now...
-					UpdateLCD=false;
-
-					if (_MenuItem == __MenuNone) {
-
-						if (_RPM != OldRPM) {
-							lcd.clear();
-							// This forces the other ones to update as well...
-							OldShapeRandom = -1;
-							OldLEDS = -1;
-							OldWeAreRight = !_WeAreRight;
-							OldSolenoid25 = ! Solenoid25;
-						}
-						
-						if (_ShapeRandom != OldShapeRandom) {
-							lcd.setCursor(0,0);
-							ShowMovementModeLCD(_ShapeRandom);
-							if (_Shape == __ShapeRandom) {
-								lcd.print("(R)");
-							}
-							OldShapeRandom = _ShapeRandom;
-						}
-
-						if (_RPM != OldRPM) {
-							lcd.setCursor(8,0);
-							lcd.print(_RPM);
-							lcd.print("RPM");
-							OldRPM = _RPM;
-						}
-
-
-						if ((LEDS != OldLEDS) || (_WeAreGoingRight!=OldWeAreGoingRight) || (_WeAreRight != OldWeAreRight) || (_WeAreLeft != OldWeAreLeft)) {
-							lcd.setCursor(0,1);
-							lcd.write(byte(_custom_barl));
-							if (_WeAreLeft) {
-								lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));
-								lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));
-							} else {
-								lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));
-								lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));
-							}
-							lcd.write(byte(_custom_dash));
-							if (_WeAreRight) {
-								lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));
-								lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));lcd.write(byte(_custom_dashF));
-							} else {
-								lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));
-								lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));lcd.write(byte(_custom_dash));							}
-
-							lcd.write(byte(_custom_barr));
-							lcd.setCursor(LEDS+1,1);
-							if (_WeAreGoingRight) {
-								lcd.write(byte(_custom_right));
-							} else {
-								lcd.write(byte(_custom_left));
-							}
-							lcd.setCursor(15,0);
-							if (_WeAreCENTERED) {
-								lcd.print('o');
-							} else {
-								lcd.write(byte(_custom_dot));
-							}
-							OldLEDS = LEDS;
-							OldWeAreGoingRight = _WeAreGoingRight;
-							OldWeAreLeft = _WeAreLeft;
-							OldWeAreRight = _WeAreRight;
-						}
-
-						
-						if (OldSolenoid25 != Solenoid25) {
-							lcd.setCursor(14,0);
-							if (!Solenoid25) {
-								lcd.print(' ');
-							} else {
-								lcd.write(byte(_custom_25));
-								//lcd.write(byte(_custom_square2));
-							}
-							OldSolenoid25 = Solenoid25;
-						}
-						
-
-					} else {
-						lcd.clear();
-						if (MenuActive) {
-							lcd.setCursor(0,1);
-						}
-						lcd.write(0b01111110);
-						
-						lcd.setCursor(1,0);
-
-						switch (_MenuItem) {
-						case __MenuMovement:
-							lcd.print ("Movement shape");
-							break;
-						case __MenuSpeed:
-							lcd.print ("Set RPM");
-							break;
-						case __MenuCenter:
-							lcd.print ("Center position");
-							break;
-						case __MenuLeft:
-							lcd.print ("Left position");
-							break;
-						case __MenuRight:
-							lcd.print ("Right position");
-							break;
-						case __MenuRecallEEPROM:
-							lcd.print ("Recall settings");
-							break;
-						case __MenuStoreEEPROM:
-							lcd.print ("Save settings");
-							break;
-						case __MenuServoRate:
-							lcd.print ("Servo rate");
-							break;
-						case __MenuInvertServo:
-							lcd.print ("Invert servo");
-							break;
-						}
-
-						lcd.setCursor(1,1);	  
-						switch (_MenuItem) {
-						case __MenuNone:
-							break;
-						case __MenuMovement:
-							if (_Shape == __ShapeRandom) {
-								lcd.print("Random:");
-								lcd.setCursor(8,1);
-							}
-							ShowMovementModeLCD(_ShapeRandom);
-							break;
-						case __MenuSpeed:
-							lcd.print(_RPM);
-							lcd.print (" rot./minute");
-							break;
-						case __MenuCenter:
-							lcd.print(_Center);
-							lcd.print (" ");
-							lcd.write (0b11100100);
-							lcd.print ("s");
-							break;
-						case __MenuLeft:
-							lcd.print(_Left);
-							lcd.print (" ");
-							lcd.write (0b11100100);
-							lcd.print ("s");
-							break;
-						case __MenuRight:
-							lcd.print(_Right);
-							lcd.print (" ");
-							lcd.write (0b11100100);
-							lcd.print ("s");
-							break;
-						case __MenuServoRate:
-							lcd.print (_Interval);
-							lcd.print (" ms");
-							break;
-						case __MenuInvertServo:
-							if (_InvertedServo) {
-								lcd.print ("yes");
-							} else {
-								lcd.print ("no");
-							}
-							break;
-						}
-					}
-				}
-			}
-			break;
-		#endif
-		case __PhaseUpdateSerial:
-			//output serial
-			break;
+		} else {
+			_ShapeRandom = _Shape;
 		}
+		//update speed calc string
+		_Step = CalcSweepStep(_Interval, _RPM);
 	}
 	// Now dealing with the LED's
 	
@@ -3079,35 +2363,6 @@ void loop()
 	#endif
 }
 
-#ifdef RotEncoder
-void ShowMovementModeLCD(byte shape) {
-	switch (shape) {
-	case __ShapeSine:
-		lcd.print ("Sine");
-		break;
-	case __ShapeSaw:
-		lcd.print ("Saw ");
-		break;
-	case __ShapeBlock1:
-		lcd.print ("Blk1");
-		break;
-	case __ShapeBlock2:
-		lcd.print ("Blk2");
-		break;
-	}	
-}
-#endif
-
-/*
-boolean SerialInputWaiting(byte StreamBeingWatched) {
-	if (ShowSerialInput==StreamBeingWatched) {
-		return (Serial.available()>0);
-	}
-	return false;
-}
-*/
-
-
 void ResetFlashTimer(byte ACTIVEorSLEEPING) {
 	_FLASHprocessing.interval(HP_FlashTime[ACTIVEorSLEEPING]);
 	_FLASHprocessing.reset();
@@ -3125,7 +2380,6 @@ void ResetHeadTimers(byte ACTIVEorSLEEPING) {
 	Blink_on=true;
 	Strobe_on=true;
 }
-
 
 unsigned long ParseInt(byte LEDorHEADorRING) {
 	int inChar;
