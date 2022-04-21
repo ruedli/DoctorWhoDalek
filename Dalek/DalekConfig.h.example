@@ -1,0 +1,301 @@
+// COPY this file and name it "Dalek.config.h" This ensures I never overwrite you config file when updating.
+// Version information
+#define Dalek_config_version 4
+
+// Settings can be altered from a webportal built in the plug. No need to change anything, just less config work
+//=========================================================================================================
+
+//Set country here: supported are CN, US, JP, NL, CH, FR   
+#define WiFiCountry "NL"
+
+//Initialize EEPROM or not (when SALT_INIT is different)
+#define SALT_INIT 121
+
+//=======================================================================================================
+// This section is NEW since version 3.x
+//
+// An MQTT server can be defined, as well as topics to use. This allows remote controling the plug from your 
+// telephone or a home automation.
+//
+// You can see the state of OctoPlugout in topic configured under <topic_OctoPlugout>
+// Switch the plug by publishing a string to topic <topic_OnOffSwitch>
+// 	 ON: switches the plug on, switching shutting down the Pi / it off after a printjob.
+//	 PERMON: switches the plug on, not looking into OctoPrint for when to switch it off.
+//	 OFF: switches the plug off/shuts down the Pi, provided no printjob is running / the extruder is cooled down.
+//
+//  Other than that, it will publish print and printjob data to 5 topics listed below. 
+//  This functionality is ONLY active once you set the def_mqtt_server #define.
+//  The mqtt server can be local or remote. 
+
+// MQTT server to use
+//#define def_mqtt_server "192.168.3.110"	// The IP address or name of your MQTT server
+#define def_mqtt_server "your.mqtt.server"	// The IP address or name of your MQTT server
+#define def_mqtt_port 1883					// The port for accessing your MQTT server
+//#define def_mqtt_port 21883				// The port for accessing your MQTT server
+
+#define def_mqtt_user "your_mqtt_user"		// The user for accessing MQTT"		
+#define def_mqtt_pass "your_mqtt_pass"		// The password for accessing your MQTT server
+
+// Topics used=============================================================================================
+#define def_mqtt_topic "sw305/pinball/DoctorWho"	// This is the "root" that all topics share
+
+// For Dalek
+#define topic_State	"/dalekState"	// WRITE it, Status messages and debug info (when enabled)		
+#define topic_Cycle	"/dalekCycle"	// WRITE it, Status messages and debug info (when enabled)		
+#define topic_Head 	"/dalekHead/#"	// READ to it, 
+
+// topics will be PREPENDED by def_mqtt_topic
+#define mqtt_UpdateInterval 		30000    				// Interval (ms) for updating status messages
+//=========================================================================================================
+//
+// Here comes the LED stuff
+//
+//		Choose storage fore config files: using SPI or LittleFS
+//#define UseSD_SPI
+#define UseSD LitttleFS
+//
+//		Choose which drivers to use, note that HT16K33 uses mostly common cathode LEDS and TM1640 common anode.
+#define __HT16K33
+#undef  __TM1640
+/*
+	A TM1640  driver uses COMMON   ANODE LEDS (and common CATHODE for only column1234)
+	A HT16K33 driver uses COMMON CATHODE LEDS (and common   ANODE for only column25)
+
+	The LEDS can either be driven in a LOWRES mode: 2 drivers
+	Driver 1: 8x5 = 40 RGB LEDS
+	Driver 2: 5x5 = 25 RGB LEDS
+
+	Alternatively, HIHGRES mode you can hook up 3 driver chips and control:
+	TM1640 1: (Column  1- 8) 8x5 = 40 RGB LEDS (120 of the 128)
+	TM1640 2: (Column  9-16) 8x5 = 40 RGB LEDS (120 of the 128)
+	TM1640 3: (Column 17-24) 8x5 = 40 RGB LEDS (120 of the 128)
+
+	The remaining 3 times 8 LEDS = 24 LEDS are used as follows:
+	Column 25: 1x5 = 5 RGB LEDS, uses therefore 15 of the remaining 24 LEDS
+	This column 25 is built using 
+	- COMMON CATHODE for the TM1640 -or-
+	- COMMON   ANODE for the HT16K33
+
+	The LAST 9 remaining LEDS are will be used (together with optocouplers to couple leds
+		from different drivers to one common cathode LED) for a RGB LEDs in the 
+		- NOSE, 
+		- RIGHT EYE
+		- LEFT EYE
+
+	-or-
+
+	- A 4th driver totally dedicated to the HEAD leds
+
+*/
+
+//=========================================================================================================
+/*
+The animations are stored in text files on an SD card.
+Test files must be like: SEQnnnn.TXT where n is a digit [0-9]. So: SEQ0000.TXT, SEQ0001.TXT, SEQ0002.TXT etc...
+
+The following commands are supported in textfiles AND on the USB input of the Arduino.
+I used an Bluetooth card attached to the pro for this purpose, so you can play with it from your PC.
+
+D <description>
+  Just a free style description, so you know what is in the file 
+  (may be used in menues added at some later point in time)
+  
+T <time>
+  Set the time in ms between two animated patterns.
+
+S <short description>
+  Just a free style SHORT description, so you know what is in the file 
+  (may be used in menues added at some later point in time)
+ 
+I [0:7]  
+  Set the intensity of the display 
+  (0, 1, 2, 3, 4 show a visible difference in intensity, above this differences are hardly noticeable)
+  EXAMPLE: I 3
+
+B [word], [word], ... <maximum of 13 words> Z
+  Set a lowres pattern, each word represents a 15 bit number with 5 LEDS in a column. Per LED 3 bits are used for Blue, Green, Red respectively. so:
+
+        Bit:    15 14 13 12 11 10  9  8  7  6  5  4  3  2  1
+			+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+			|  |R5|G5|B5|R4|G4|B4|R3|G3|B3|R2|G2|B2|R1|G1|B1|
+			+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+	Led 1 is the top LED.
+C [word], [word], ... <maximum of 25 words> Z
+  Set a highres pattern, each word represents a 15 bit number with 5 LEDS in a column. Per LED 3 bits are used for Blue, Green, Red respectively. so:
+
+        Bit:    15 14 13 12 11 10  9  8  7  6  5  4  3  2  1
+			+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+			|  |R5|G5|B5|R4|G4|B4|R3|G3|B3|R2|G2|B2|R1|G1|B1|
+			+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+	Led 1 is the top LED.
+
+	Note that column 25 (the last word) is driven by all three drivers
+	
+STILL supported... 
+X [byte],[byte],[byte],[byte],[byte],... <maximum of 32 bytes> Z
+  Set a lowres pattern across 2 TM1640 modules (note, on a HIghRes DALEK, the pattern is still correctly displayed using the 3 TM1640s.)
+  You may terminate the bytes in the pattern by an early "Z", the pattern is padded with "0"-s  
+  EXAMPLE: X 21,127,5,8 Z
+  EXAMPLE: X Z
+
+STILL supported... 
+Y [byte],[byte],[byte],[byte],[byte],... <maximum of 48 bytes> Z
+  Set a highres pattern across 3 TM1640 modules
+  You may terminate the bytes in the pattern by an early "Z", the pattern is padded with "0"-s  
+  EXAMPLE: Y 21,127,5,8 Z
+  EXAMPLE: Y Z
+
+L Move (rotate) the pattern displayed one step to the left.  
+  
+R Move (rotate) the pattern displayed one step to the right.
+  
+M [0:3]
+  Set the displaymode for highres DALEKS
+  M 0: Displays lowres commands on the HighRes Dalek as they appear on on LOWRES dalek (not as simple as you think)
+  M 1: Displays lowres commands on the HighRes Dalek on the right hand side of the Dalek
+  M 2: Displays lowres commands on the HighRes Dalek on the centered side on the Dalek
+  M 3: Displays lowres commands on the HighRes Dalek on the left hand side of the Dalek
+  
+A
+  Start animation again after you have entered commands using USB serial input or bluetooth.
+  
+========================================================================================================
+
+/* Color has for the column the following vaules:
+	0: blue
+	1: green
+	2: red		
+	The order is (blue, green, red)1  (blue, green, red)2 etc. : 15 in total for 5 in a column (0..14).
+	
+	 bit   row  color 
+
+	+-----------------+
+	|  0 row 1  BLUE  | TOP ROW!!!
+	|  1 row 1  GREEN | 
+	|  2 row 1  RED   | 
+	+-----------------+
+	|  3 row 2  BLUE  | 
+	|  4 row 2  GREEN | 
+	|  5 row 2  RED   | 
+	+-----------------+
+	|  6 row 3  BLUE  | 
+	|  7 row 3  GREEN |      3x8=24 columns, 8 in each driver, every time one word of 15 bits, 
+	|  8 row 3  RED   |  the 3x8 bits that are left (each bit 16 of a word) are used for column25.
+	+-----------------+
+	|  9 row 4  BLUE  | 
+	| 10 row 4  GREEN | 
+	| 11 row 4  RED   | 
+	+-----------------+
+	| 12 row 5  BLUE  | 
+	| 13 row 5  GREEN | 
+	| 14 row 5  RED   | BOTTOM ROW
+	+-----------------+
+	
+*/
+
+/*
+==These are the colors for the BUFFER leds, NOT FOR ROW 25, but only ROW 1..24!!!!!!
+	  RedPart(byte color) {  RedPart = (color & 4) >> 2; }
+	GreenPart(byte color) {GreenPart = (color & 2) >> 1; }
+	 BluePart(byte color) { BluePart = (color & 1);}
+
+	The ROW25 RGB LEDS are stored in the last three bytes of Buffer4:
+    Digits(3, 16) = RedSet(AllLEDS(1, MaxCol)) + 2 * GreenSet(AllLEDS(1, MaxCol)) + 4 * BlueSet(AllLEDS(1, MaxCol)) + 8 * RedSet(AllLEDS(2, MaxCol)) + 16 * GreenSet(AllLEDS(2, MaxCol)) + 32 * BlueSet(AllLEDS(2, MaxCol))
+    Digits(2, 16) = RedSet(AllLEDS(3, MaxCol)) + 2 * GreenSet(AllLEDS(3, MaxCol)) + 4 * BlueSet(AllLEDS(3, MaxCol)) + 8 * RedSet(AllLEDS(4, MaxCol)) + 16 * GreenSet(AllLEDS(4, MaxCol)) + 32 * BlueSet(AllLEDS(4, MaxCol))
+    Digits(1, 16) = RedSet(AllLEDS(5, MaxCol)) + 2 * GreenSet(AllLEDS(5, MaxCol)) + 4 * BlueSet(AllLEDS(5, MaxCol))
+
+	byte 15: 6 bits (van LSB-> bit 6): row1(red), row1(green), row1(blue)    row2(red), row2(green), row2(blue)
+	byte 14: 6 bits (van LSB-> bit 6): row3(red), row3(green), row3(blue)    row4(red), row4(green), row4(blue)
+	byte 13: 3 bits (van LSB-> bit 3): row5(red), row5(green), row5(blue)
+
+	OR, when using a separate HT16K33 for the head / ring
+	
+	Buffer4
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+	| 15    7 | 15    6 | 15    5 | 15    4 | 15    3 | 15    2 | 15    1 | 15    0 |
+	|         |         | Row 2   | Row 2   |  Row 2  |  Row 1  | Row 1   | Row 1   |
+	|         |         | BLUE    | GREEN   |  RED    |  BLUE   | GREEN   | RED     |
+	|         |         |         |         |         |         |         |         |
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+
+	Buffer3
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+	| 15    7 | 15    6 | 15    5 | 15    4 | 15    3 | 15    2 | 15    1 | 15    0 |
+	|         |         | Row 4   | Row 4   | Row 4   | Row 3   | Row 3   | Row 3   |
+	|         |         | BLUE    | GREEN   | RED     | BLUE    | GREEN   | RED     |
+	|         |         |         |         |         |         |         |         |
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+
+	Buffer2
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+	| 15    7 | 15    6 | 15    5 | 15    4 | 15    3 | 15    2 | 15    1 | 15    0 |
+	|         |         |         |         |         | Row 5   | Row 5   | Row 5   |
+	|         |         |         |         |         | BLUE    | GREEN   | RED     |
+	|         |         |         |         |         |         |         |         |
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+
+
+	Buffer4
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+	| 15    7 | 15    6 | 15    5 | 15    4 | 15    3 | 15    2 | 15    1 | 15    0 |
+	| L eye   | R eye   | Row 2   | Row 2   |  Row 2  |  Row 1  | Row 1   | Row 1   |
+	| BLUE    | GREEN   | BLUE    | GREEN   |  RED    |  BLUE   | GREEN   | RED     |
+	|         |         |         |         |         |         |         |         |
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+
+	Buffer3
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+	| 15    7 | 15    6 | 15    5 | 15    4 | 15    3 | 15    2 | 15    1 | 15    0 |
+	| L eye   | R eye   | Row 4   | Row 4   | Row 4   | Row 3   | Row 3   | Row 3   |
+	| RED     | BLUE    | BLUE    | GREEN   | RED     | BLUE    | GREEN   | RED     |
+	|         |         |         |         |         |         |         |         |
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+
+	Buffer2
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+	| 15    7 | 15    6 | 15    5 | 15    4 | 15    3 | 15    2 | 15    1 | 15    0 |
+	| R eye   | R eye   | nose    | nose    | nose    | Row 5   | Row 5   | Row 5   |
+	| GREEN   | RED     | BLUE    | GREEN   | RED     | BLUE    | GREEN   | RED     |
+	|         |         |         |         |         |         |         |         |
+	+---------+---------+---------+---------+---------+---------+---------+---------+
+	
+
+*/
+
+
+/*=====================================================================================================
+
+Library for TM1640.
+
+Copyright (C) 2011 Ricardo Batista <rjbatista at gmail dot com>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the version 3 GNU General Public License as
+published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+//=========================================================================================================
+//Set these to your own taste.
+
+// This is the hostname of your plug
+// If the define is not set, no OTA password is required.
+// Note that your platformio OTA upload (or arduino IDE OTA upgrade), must specify (or type in when prompted
+// the same password the NEXT time you upload an image.
+//
+//Set the password, for future Over The Air (WiFi) updates here.
+//#define OTApass "1234"
+
+// A hostname helps identifying the plug, not all operation systems will see it configured in this manner, 
+// it might need the "bonjour" service installed.
+#define op_hostname "DoctorWhoDalek"
+
+// Set this debug_ define to write information to the serial port, will NOT be visible over Wifi, only to the serial port
+//#define DEBUG
