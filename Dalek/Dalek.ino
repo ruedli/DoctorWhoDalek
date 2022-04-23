@@ -343,8 +343,15 @@ TM1640 1: (Column  1- 8) 8x5 = 40 RGB LEDS (120 of the 128)
 TM1640 2: (Column  9-16) 8x5 = 40 RGB LEDS (120 of the 128)
 TM1640 3: (Column 17-24) 8x5 = 40 RGB LEDS (120 of the 128)
 
+Highres is easier to solder, as the LEDS are closer together, and the wires can easily be soldered together.
+I do recommend however putting the LEDS on PCB's: per driver one board with 2 rows 
+(interfacing to the driver and other boards), and tow PCB's with 3 rows each. This makes 8 rows in total.
+I based it on stripboard that connects all the non-common wires of the LEDS. 
+The common wires are soldered mid-air, above the board: 5 common wires of the 5 RGB LEDS in each column,
+giving you a matrix of EACH driver (there are 3 in total) with 8x15 LEDs, so 8x5 RGB leds.  
+
 The remaining 3 times 8 LEDS = 24 LEDS are used as follows:
-Column 25: 1x5 = 5 RGB LEDS, uses therefore 15 of the remaining 24 LEDS
+Column 25: 1x5 = 5 RGB LEDS, uses therefore 15 of the remaining 24 LEDS of the three drivers.
 This column 25 is built using 
 - COMMON CATHODE for the TM1640 -or-
 - COMMON   ANODE for the HT16K33
@@ -470,11 +477,12 @@ C [word], [word], ... <maximum of 25 words> Z
 			+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 	Led 1 is the top LED.
 
-	Note that column 25 (the last word) is driven by all three drivers
+	Note that column 25 (the last word) is driven by all three LED drivers:
+	2 RGB's for driver one and two, and 1 RGB from the third driver, making the 25th column with its 5 RGBs.
 	
-STILL supported...(based having TM1640 command n mind) 
+STILL supported...(based having TM1640 command in mind, but I made them work in my firmware also for the HT16K33) 
 X [byte],[byte],[byte],[byte],[byte],... <maximum of 32 bytes> Z
-  Set a lowres pattern across 2 TM1640 modules (note, on a HIghRes DALEK, the pattern is still correctly displayed using the 3 TM1640s.)
+  Set a lowres pattern across 2 TM1640 modules (note, on a HIghRes DALEK, the pattern is still correctly displayed using the 3 LED drivers.)
   You may terminate the bytes in the pattern by an early "Z", the pattern is padded with "0"-s  
   EXAMPLE: X 21,127,5,8 Z
   EXAMPLE: X Z
@@ -486,9 +494,9 @@ Y [byte],[byte],[byte],[byte],[byte],... <maximum of 48 bytes> Z
   EXAMPLE: Y 21,127,5,8 Z
   EXAMPLE: Y Z
 
-L OBSOLETE as of v4.0 Move (rotate) the pattern displayed one step to the left.  
+L OBSOLETE and removed for v4.0 Move (rotate) the pattern displayed one step to the left.  
   
-R OBSOLETE as of v4.0 Move (rotate) the pattern displayed one step to the right.
+R OBSOLETE and removed for v4.0 Move (rotate) the pattern displayed one step to the right.
   
 M [0:3]
   Set the displaymode for highres DALEKS
@@ -514,20 +522,34 @@ Adddddddddddddddddddddddd
 
 ================================== Commands in HEAD mode (for the Nose and eyes of the Dalek head)
 
-Cddd
- Set the color of left-eye, nose and right-eye.
- This defines a pattern, that is displayed.
-	d is any of:
+Cdddbbbsss
+ Sets the color of left-eye, nose and right-eye.
+ This defines a pattern, that is displayed, as well as blinking/flashing and strobing mode.
 	[0..7] set a color
+	d is any of:
 	A      Random (Any) color
 	G      Random (as a Group)
 	U      Random (Unique color)
 	L      Follow Left eye (take color what is was previously)
 	R      Follow Right eye (take color what is was previously)
 	N      Follow Nose (take color what is was previously)
+
+	b is any of:
+	B      Blink
+	F      Flash
+	O	   On the whole period
+	-	   Keep the previous definition that was set.
+	
+	s is any of:
+	S	   Strobe the LED while it blinks, flashes or is on
+	N	   No strobing
+	-	   The previous strobing mode defined for this LED.
+	
+	Missing "s" or "b" are interpreted as "-"
  
 Lmmm
- Set the mode of working of left-eye, nose and right-eye.
+ OBSOLETE: use the optional "bbb" and "sss" with the "C" command instead. 
+ Sets the mode of working of left-eye, nose and right-eye.
  This does not count as a pattern, it determines how subsequent Cddd patterns are played.
 	m is any of:
 	o On         O On Strobing
@@ -590,7 +612,26 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  - Solenoid #25 of the flash/driver.
  - (optional) Solenoid #14 of the flash/driver (this is the Lamp from the original Dalek head Flasher).
  
- CHANGELOG
+ The LEDS were originally programmed on another Arduino. Now, for the ESP32 D1 Mini, the code is integrated.
+ If you want LEDS in the base, you need additional hardware (use HT16K33's, TM1640's will not work as of version 4.0):
+ - 3 HT16K33 drivers. These uses COMMON CATHODE LEDS for column 1-24 and common ANODE leds for column 25, so:
+ - 120 RGB leds , 5mm diffuse common CATHODE (these make columns 1-24, 5 LEDS each)
+ -   5 RGB leds , 5mm diffuse common   ANODE (these make columns 25, also 5 LEDS)
+ 
+ If you additionaly like LEDS in the head:
+ - 1 HT16K33 driver for the head
+ - 24 RGB LEDS for the ring on the Dalek head.
+ - 15 RGB LEDS: 5 in the nose, and 5 in each eye.
+ 
+ Allthough the drivers can lightup the 5 LEDS in nose and each eye individually, the animation software does not utilize this.
+ Nose and eyes each have "just" one of the 7 colors.
+ 
+ Additionally you need stripboard, dupont headers, wire and solder. 
+ 
+ I used wire wrapping on the dupont headers and the RGB wires. 
+ Works very reliable, better that soldering, these joints tend to break when soldered mid-air.
+ 
+  CHANGELOG
  - 1.3 Swapped pins to accomodate PCB
  
  - 1.4 Added logic for the TM1638
@@ -622,6 +663,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 	   Add screen to configure wifi settings.
 	   
  - 4.1 Remove the old code for LCD and menu
+ 
+ - 4.2 Added hardware recommendations
  */
 
 
