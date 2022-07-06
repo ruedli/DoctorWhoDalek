@@ -178,7 +178,7 @@ In a 16 byte buffer depicted below as 2 columns of 8 bytes each, counting like t
 
   
 	        Row 0          Row 1          Row 2          Row 3          Row 4          
-       |+0 0|+0 1|+0 2 0  3|+0 4|+0 5|+0 6|+0 7|+1 0|+1 1|+1 2|+1 3|+1 4|+1 5|+1 6|+1 7|
+       |+0 0|+0 1|+0 2|+0 3|+0 4|+0 5|+0 6|+0 7|+1 0|+1 1|+1 2|+1 3|+1 4|+1 5|+1 6|+1 7|
        +----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
 col  0 | B    G    R  | B    G    R  | B    G  - R  | B    G    R  | B    G    R  |c 24|
      8 |              |              |              |              |              |r0 R|
@@ -343,7 +343,16 @@ void DalekDriver::SetNose(uint8_t color, uint8_t mask) {
   }
 }
 
+/* Dalekdriver is a bit strange, as I shifted the hardware 1 LED (so skipped 1) and the 
+   skipped first real LED became wired to last outpus of the HT16K33
+   
+   If you want this, set no difen.
+   
+   If you want the "regular" order, so top LED A0..A2, next A3..A5 etc last LED A12..A14, then set define REGULAR_LEDS
+*/
+
 void DalekDriver::SetLed(byte row, byte col, byte color) {
+#ifndef REGULAR_LEDS
 	switch (row) {
 	case 0:
 		_Buffer[2*col+1] &= 0b10001111;
@@ -367,6 +376,34 @@ void DalekDriver::SetLed(byte row, byte col, byte color) {
 		_Buffer[2*col+1] |= color<<1;
 		break;
 	}
+#else
+	/* This is preparing for V7 of the hardware, where I do not start at the second row and swap row1 and 5.
+	NOT TESTED YET... set define REGULAR_LEDS to test it.
+	*/
+	switch (row) {
+	case 0:
+		_Buffer[2*col] &= 0b11111000;		// & is the logical AND, so bits wit
+		_Buffer[2*col] |= color;
+		break;
+	case 1:
+		_Buffer[2*col] &= 0b11000111;
+		_Buffer[2*col] |= color<<3;
+		break;
+	case 2:
+		_Buffer[2*col] &= 0b00111111;
+		_Buffer[2*col] |= (color&0b11) <<6;
+		if (IsRed(color)) _Buffer[2*col+1] |= 0b1; else _Buffer[2*col+1] &= 0b11111110;
+		break;
+	case 3:
+		_Buffer[2*col+1] &= 0b11110001;
+		_Buffer[2*col+1] |= color<<1;
+		break;
+	case 4:
+		_Buffer[2*col+1] &= 0b10001111;
+		_Buffer[2*col+1] |= color<<4;
+		break;
+	}
+#endif
 }
 
 void DalekDriver::SetLedColumn(byte col, int columncolors) {

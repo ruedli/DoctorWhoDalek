@@ -57,6 +57,12 @@
 //		Choose which drivers to use, note that HT16K33 uses mostly common cathode LEDS and TM1640 common anode.
 #define __HT16K33
 #undef  __TM1640
+
+//		Choose the "normal order of LEDS, how the rows go over the Dalek.
+//		If REGULAR_LEDS is NOT defined, the top row is skipped and becomes the last
+//		so order for A0->A14 is: (BGR row 2) (BGR row 3) (BGR row 4) (BGR row 5) (BGR row 1)
+      
+//#define REGULAR_LEDS
 /*
 	A TM1640  driver uses COMMON   ANODE LEDS (and common CATHODE for only column1234)
 	A HT16K33 driver uses COMMON CATHODE LEDS (and common   ANODE for only column25)
