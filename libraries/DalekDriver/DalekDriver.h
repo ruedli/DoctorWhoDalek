@@ -57,6 +57,7 @@ class DalekDriver
 		bool IsBlue(byte color);
 		bool IsGreen(byte color);
 		bool IsRed(byte color);
+		uint8_t SwapRGB(uint8_t color);
 };
 
 #endif

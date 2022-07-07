@@ -22,6 +22,20 @@
 
 #include "DalekDriver.h"
 
+/* 	You can define how your DALEK is built, perhaps you skipped the first row of LEDS or 
+	perhaps you swapped the RGB pins, so that leds display BGR instead of RGB.
+	uncomment the defines below accordingly
+*/
+//#define REGULAR_LEDS
+
+//#define SWAP_LEDS_RGB
+//#define SWAP_EXTRA_RGB
+//#define SWAP_LEFT_RGB
+//#define SWAP_NOSE_RGB
+//#define SWAP_RIGHT_RGB
+
+// END OF DEFINES FOR LED SOLDERING issues.
+
 //****************************************************** CONSTRUCTOR L
 DalekDriver::DalekDriver(byte HexAddress) :
 	_HexAddress(HexAddress)
@@ -264,7 +278,13 @@ void DalekDriver::SetRing(uint8_t Led, uint8_t color) {
 	}
 }
 
-void DalekDriver::SetEyeR(byte color, byte mask) {
+void DalekDriver::SetEyeR(byte SetColor, byte mask) {
+#ifdef SWAP_LEFT_RGB
+	uint8_t color = SwapRGB(SetColor);
+#else
+	uint8_t color = SetColor;
+#endif	
+	
   for (byte i=0; i<=4; i++) {
 	//Serial.print("R i   :");Serial.println(i);
     if (mask & (1<<i)) {
@@ -277,7 +297,13 @@ void DalekDriver::SetEyeR(byte color, byte mask) {
   }
 }
 
-void DalekDriver::SetEyeL(byte color, byte mask) {
+void DalekDriver::SetEyeL(byte SetColor, byte mask) {
+#ifdef SWAP_RIGHT_RGB
+	uint8_t color = SwapRGB(SetColor);
+#else
+	uint8_t color = SetColor;
+#endif	
+	
   for (byte i=0; i<=4; i++) {
 	//Serial.print("\nL i   :");Serial.println(i);
     if (mask & (1<<i)) {
@@ -310,7 +336,14 @@ void DalekDriver::SetEyeL(byte color, byte mask) {
   }
 }
 
-void DalekDriver::SetNose(uint8_t color, uint8_t mask) {
+void DalekDriver::SetNose(uint8_t SetColor, uint8_t mask) {
+
+#ifdef SWAP_NOSE_RGB
+	uint8_t color = SwapRGB(SetColor);
+#else
+	uint8_t color = SetColor;
+#endif
+	
   for (uint8_t i=0; i<=4; i++) {
 	//Serial.print("\nN i   :");Serial.println(i);
     if (mask & (1<<i)) {
@@ -346,39 +379,22 @@ void DalekDriver::SetNose(uint8_t color, uint8_t mask) {
 /* Dalekdriver is a bit strange, as I shifted the hardware 1 LED (so skipped 1) and the 
    skipped first real LED became wired to last outpus of the HT16K33
    
-   If you want this, set no difen.
+   If you want this, set no define.
    
    If you want the "regular" order, so top LED A0..A2, next A3..A5 etc last LED A12..A14, then set define REGULAR_LEDS
 */
 
-void DalekDriver::SetLed(byte row, byte col, byte color) {
-#ifndef REGULAR_LEDS
-	switch (row) {
-	case 0:
-		_Buffer[2*col+1] &= 0b10001111;
-		_Buffer[2*col+1] |= color<<4;
-		break;
-	case 1:
-		_Buffer[2*col] &= 0b11111000;
-		_Buffer[2*col] |= color;
-		break;
-	case 2:
-		_Buffer[2*col] &= 0b11000111;
-		_Buffer[2*col] |= color<<3;
-		break;
-	case 3:
-		_Buffer[2*col] &= 0b00111111;
-		_Buffer[2*col] |= (color&0b11) <<6;
-		if (IsRed(color)) _Buffer[2*col+1] |= 0b1; else _Buffer[2*col+1] &= 0b11111110;
-		break;
-	case 4:
-		_Buffer[2*col+1] &= 0b11110001;
-		_Buffer[2*col+1] |= color<<1;
-		break;
-	}
+void DalekDriver::SetLed(byte row, byte col, byte SetColor) {
+
+#ifdef SWAP_LEDS_RGB
+	byte color = SwapRGB(SetColor);
 #else
-	/* This is preparing for V7 of the hardware, where I do not start at the second row and swap row1 and 5.
-	NOT TESTED YET... set define REGULAR_LEDS to test it.
+	byte color = SetColor;
+#endif
+
+#ifdef REGULAR_LEDS
+	/*
+	This is preparing for V7 of the hardware, in case I do not start at the second row and swap row1 and 5.
 	*/
 	switch (row) {
 	case 0:
@@ -403,15 +419,61 @@ void DalekDriver::SetLed(byte row, byte col, byte color) {
 		_Buffer[2*col+1] |= color<<4;
 		break;
 	}
+#else
+	switch (row) {
+	case 0:
+		_Buffer[2*col+1] &= 0b10001111;
+		_Buffer[2*col+1] |= color<<4;
+		break;
+	case 1:
+		_Buffer[2*col] &= 0b11111000;
+		_Buffer[2*col] |= color;
+		break;
+	case 2:
+		_Buffer[2*col] &= 0b11000111;
+		_Buffer[2*col] |= color<<3;
+		break;
+	case 3:
+		_Buffer[2*col] &= 0b00111111;
+		_Buffer[2*col] |= (color&0b11) <<6;
+		if (IsRed(color)) _Buffer[2*col+1] |= 0b1; else _Buffer[2*col+1] &= 0b11111110;
+		break;
+	case 4:
+		_Buffer[2*col+1] &= 0b11110001;
+		_Buffer[2*col+1] |= color<<1;
+		break;
+	}
 #endif
 }
 
-void DalekDriver::SetLedColumn(byte col, int columncolors) {
+void DalekDriver::SetLedColumn(byte col, int Mycolumncolors) {
+	// RGB swapping for experts: MASK R G and B and shift R and B...
+	int columncolors = Mycolumncolors;
+	
+	#ifdef SWAP_LEDS_RGB
+	columncolors = ((columncolors & 0b0001001001001001) << 2 ) | (columncolors & 0b0010010010010010) | ((columncolors &0b0100100100100100) >> 2 );
+	#endif
+
+	/* Need to shift things a bit, as default soldering skipped the first (top) row of LEDS
+	*/
+	#ifdef REGULAR_LEDS
 	_Buffer[2*col]   =  columncolors & 0x00FF;
 	_Buffer[2*col+1] = (columncolors & 0xFF00)>>8;
+	#else
+	_Buffer[2*col] =   ((columncolors & 0b0000011111111000) >> 3);
+	_Buffer[2*col+1] = ((columncolors & 0b0111100000000000) >> 11) | ((columncolors & 0b0000000000000111) << 4);
+	#endif
 }
 
-void DalekDriver::SetLedExtra(byte row, byte color) {
+void DalekDriver::SetLedExtra(byte row, byte SetColor) {
+
+#ifdef SWAP_EXTRA_RGB
+	byte color = SwapRGB(SetColor);
+#else
+	byte color = SetColor;
+#endif
+
+
 	if (row>1) row=1;
 	if (IsBlue(color)) {
 		_Buffer[5+6*row] |= 0b10000000;				
@@ -499,3 +561,33 @@ void DalekDriver::readKeys() {
 	}
   }
 }
+
+uint8_t DalekDriver::SwapRGB(uint8_t color) {
+/*	This routine swaps from RGB to BGR
+	Use it when colors appear swapped, so e.g. when LEDS are soldered in with the wrong pin order.
+	000 -> 000 (no swap necessary)
+	001 -> 100 (1 -> 4) 
+	010 -> 010 (no swap necessary)
+	011 -> 110 (3 -> 6)
+	100 -> 001 (4 -> 1)
+	101 -> 101 (no swap necessary)
+	110 -> 011 (6 -> 3)
+	111 -> 111 (no swap necessary)
+*/	
+	return (((color&0b001) << 2) | (color&0b010) | ((color&0b100) >> 2));
+/*
+	switch (color) {
+	case 1:
+		return 4;
+	case 3:
+		return 6;
+	case 4:
+		return 1;
+	case 6:
+		return 3;
+	default:
+		return color;
+	}
+*/
+}
+
